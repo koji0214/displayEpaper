@@ -4,23 +4,14 @@
 #include <Fonts/FreeSansBold12pt7b.h> // 使用するフォント2 (中くらいのサイズ)
 
 // --- E-Paperディスプレイのピン定義 ---
-// Seeed Studio XIAO ESP32-C3のピンアウトに合わせて定義します。
-// E-PaperモジュールとXIAO ESP32-C3の物理的な接続をこの定義と一致させてください。
 #define EPD_CS    7  // Chip Select (SS)      -> XIAO D5 / SCL (GPIO7) に接続
 #define EPD_DC    5  // Data/Command          -> XIAO D3 / A3 (GPIO5) に接続
 #define EPD_RST   2  // Reset                 -> XIAO D0 / A0 (GPIO2) に接続
 #define EPD_BUSY  3  // Busy signal from E-Paper -> XIAO D1 / A1 (GPIO3) に接続
 
-// E-PaperのSPIピン (SCL/SCK と SDA/MOSI) は、GxEPD2ライブラリがESP32のデフォルトSPIピンを
-// 自動的に使用するため、コンストラクタで明示的に定義する必要はありません。
-// 物理的には、E-Paper SCLピンをXIAO D2/A2 (GPIO4) に、
-// E-Paper SDAピンをXIAO D4/SDA (GPIO6) に接続してください。
-
-// あなたの4.2インチ SSD1683 ディスプレイに対応するクラスを選択します。
-// これは Good Display GDEY042T81 などに相当します。
-// コンストラクタの呼び出し方を修正しました。
+// ディスプレイオブジェクトの初期化
 GxEPD2_BW<GxEPD2_420_GDEY042T81, GxEPD2_420_GDEY042T81::HEIGHT> display(
-  GxEPD2_420_GDEY042T81(EPD_CS, EPD_DC, EPD_RST, EPD_BUSY)); // <-- この行を修正
+  GxEPD2_420_GDEY042T81(EPD_CS, EPD_DC, EPD_RST, EPD_BUSY));
 
 // デモ表示用の定数文字列
 const char HelloWorld[] = "Hello World!";
@@ -28,29 +19,24 @@ const char HelloWeACtStudio[] = "WeAct Studio"; // 元のデモにあった文�
 
 // --- 描画関数1: 基本的な「Hello World!」表示 ---
 void helloWorld() {
-  // 画面の向きを横向きに設定（0=縦、1=横、2=逆縦、3=逆横）
   display.setRotation(1);
-  display.setFont(&FreeMonoBold9pt7b); // フォントを設定
-  display.setTextColor(GxEPD_BLACK);    // テキスト色を黒に設定
+  display.setFont(&FreeMonoBold9pt7b);
+  display.setTextColor(GxEPD_BLACK);
 
-  int16_t tbx, tby; // テキストバウンドボックスのX, Y座標
-  uint16_t tbw, tbh; // テキストバウンドボックスの幅、高さ
+  int16_t tbx, tby;
+  uint16_t tbw, tbh;
 
-  // "Hello World!" のテキストサイズを取得し、中央に配置する座標を計算
   display.getTextBounds(HelloWorld, 0, 0, &tbx, &tby, &tbw, &tbh);
   uint16_t x_hw = ((display.width() - tbw) / 2) - tbx;
   uint16_t y_hw = ((display.height() - tbh) / 2) - tby;
 
-  // 画面全体を更新対象に設定
   display.setFullWindow();
-  // 描画開始（do-whileループでページ描画を繰り返す）
   display.firstPage();
   do {
-    display.fillScreen(GxEPD_WHITE); // 画面を白で塗りつぶす
-    display.setCursor(x_hw, y_hw - tbh); // "Hello World!" のカーソル位置を設定
-    display.print(HelloWorld);         // "Hello World!" を描画
+    display.fillScreen(GxEPD_WHITE);
+    display.setCursor(x_hw, y_hw - tbh);
+    display.print(HelloWorld);
 
-    // "WeAct Studio" のテキストサイズを取得し、中央に配置する座標を計算
     display.getTextBounds(HelloWeACtStudio, 0, 0, &tbx, &tby, &tbw, &tbh);
     uint16_t x_was = ((display.width() - tbw) / 2) - tbx;
     display.setCursor(x_was, y_hw + tbh); // "WeAct Studio" のカーソル位置を設定
@@ -65,7 +51,6 @@ void helloFullScreenPartialMode() {
   const char spm[] = "slow partial mode";
   const char npm[] = "no partial mode";
 
-  // 画面全体を部分更新の対象として設定
   display.setPartialWindow(0, 0, display.width(), display.height());
   display.setRotation(1); // 画面の向きを設定
   display.setFont(&FreeMonoBold9pt7b); // フォントを設定
@@ -83,7 +68,6 @@ void helloFullScreenPartialMode() {
 
   int16_t tbx, tby; uint16_t tbw, tbh;
 
-  // 各テキストを中央に配置するための座標を事前に計算
   display.getTextBounds(fullscreen, 0, 0, &tbx, &tby, &tbw, &tbh);
   uint16_t utx = ((display.width() - tbw) / 2) - tbx;
   uint16_t uty = ((display.height() / 4) - tbh / 2) - tby;
@@ -96,16 +80,15 @@ void helloFullScreenPartialMode() {
   uint16_t hwx = ((display.width() - tbw) / 2) - tbx;
   uint16_t hwy = ((display.height() - tbh) / 2) - tby;
 
-  // 描画ループ
   display.firstPage();
   do {
-    display.fillScreen(GxEPD_WHITE); // 画面を白で塗りつぶす
+    display.fillScreen(GxEPD_WHITE);
     display.setCursor(hwx, hwy);
-    display.print(HelloWorld); // 中央に "Hello World!"
+    display.print(HelloWorld);
     display.setCursor(utx, uty);
-    display.print(fullscreen); // 上部に "full screen update"
+    display.print(fullscreen);
     display.setCursor(umx, umy);
-    display.print(updatemode); // 下部に現在の更新モード
+    display.print(updatemode);
   } while (display.nextPage());
 }
 
@@ -113,55 +96,53 @@ void helloFullScreenPartialMode() {
 void showPartialUpdate() {
   helloWorld(); // 背景として「Hello World!」を表示
 
-  // 更新するボックスの定義
   uint16_t box_x = 10;
   uint16_t box_y = 15;
-  uint16_t box_w = 150; // ボックスの幅を少し広めに
-  uint16_t box_h = 30;  // ボックスの高さを少し広めに
-  uint16_t cursor_y = box_y + box_h - 6; // テキストのベースライン位置
+  uint16_t box_w = 150;
+  uint16_t box_h = 30;
+  uint16_t cursor_y = box_y + box_h - 6;
 
-  float value = 13.95; // 初期値
-  // 高速部分更新対応ディスプレイなら1ずつ、そうでなければ3ずつ値を増やす
+  float value = 13.95;
   uint16_t incr = display.epd2.hasFastPartialUpdate ? 1 : 3;
 
-  display.setFont(&FreeMonoBold9pt7b); // フォントを設定
-  display.setTextColor(GxEPD_BLACK);    // テキスト色を黒に設定
+  display.setFont(&FreeMonoBold9pt7b);
+  display.setTextColor(GxEPD_BLACK);
 
   // 更新ボックスの位置を各回転で表示（黒い四角で場所を示す）
   for (uint16_t r = 0; r < 4; r++) {
-    display.setRotation(r); // 画面の向きを変更
-    display.setPartialWindow(box_x, box_y, box_w, box_h); // 部分更新領域を設定
+    display.setRotation(r);
+    display.setPartialWindow(box_x, box_y, box_w, box_h);
     display.firstPage();
     do {
-      display.fillRect(box_x, box_y, box_w, box_h, GxEPD_BLACK); // ボックスを黒で塗りつぶす
+      display.fillRect(box_x, box_y, box_w, box_h, GxEPD_BLACK);
     } while (display.nextPage());
-    delay(1000); // 1秒間表示
+    delay(1000);
     display.firstPage();
     do {
-      display.fillRect(box_x, box_y, box_w, box_h, GxEPD_WHITE); // ボックスを白でクリア
+      display.fillRect(box_x, box_y, box_w, box_h, GxEPD_WHITE);
     } while (display.nextPage());
-    delay(500); // 0.5秒間待機
+    delay(500);
   }
 
   // 更新ボックス内の数値を動的に変更し、部分更新をデモ
   for (uint16_t r = 0; r < 4; r++) {
-    display.setRotation(r); // 画面の向きを変更
-    display.setPartialWindow(box_x, box_y, box_w, box_h); // 部分更新領域を設定
+    display.setRotation(r);
+    display.setPartialWindow(box_x, box_y, box_w, box_h);
     for (uint16_t i = 1; i <= 10; i += incr) {
       display.firstPage();
       do {
-        display.fillRect(box_x, box_y, box_w, box_h, GxEPD_WHITE); // ボックスをクリア
-        display.setCursor(box_x, cursor_y); // カーソル位置を設定
-        display.print(value * i, 2);       // 計算した数値を小数点以下2桁で表示
+        display.fillRect(box_x, box_y, box_w, box_h, GxEPD_WHITE);
+        display.setCursor(box_x, cursor_y);
+        display.print(value * i, 2);
       } while (display.nextPage());
-      delay(500); // 0.5秒ごとに更新
+      delay(500);
     }
-    delay(1000); // 各回転の最後に少し待機
+    delay(1000);
     display.firstPage();
     do {
-      display.fillRect(box_x, box_y, box_w, box_h, GxEPD_WHITE); // ボックスを白でクリア
+      display.fillRect(box_x, box_y, box_w, box_h, GxEPD_WHITE);
     } while (display.nextPage());
-    delay(500); // 0.5秒間待機
+    delay(500);
   }
 }
 
