@@ -18,12 +18,14 @@ const char HelloWorld[] = "Hello World!";
 const char HelloWeACtStudio[] = "WeAct Studio";
 
 // --- ボタン制御用の変数 ---
-#define BUTTON_PIN 8 // ボタンを接続するGPIOピン (XIAO D8 / SCK)
-long lastButtonPressTime = 0; // 最後にボタンが押された時刻
+#define BUTTON_PIN_1 8  // 1つ目のボタンを接続するGPIOピン (XIAO D8 / SCK)
+#define BUTTON_PIN_2 10 // 2つ目のボタンを接続するGPIOピン (XIAO D10 / MOSI)
+
+long lastButton1PressTime = 0; // 1つ目のボタン用デバウンス変数
+long lastButton2PressTime = 0; // 2つ目のボタン用デバウンス変数
 const long debounceDelay = 200; // デバウンス時間 (ミリ秒)
 
-// 描画状態を管理する変数
-int displayMode = 0; // 0: helloWorld(), 1: helloFullScreenPartialMode(), 2: showPartialUpdate()
+int displayMode = 0; // 表示モードを管理する変数 (0: helloWorld, 1: helloFullScreenPartialMode, 2: showPartialUpdate)
 
 // --- 描画関数1: 基本的な「Hello World!」表示 ---
 void helloWorld() {
@@ -63,7 +65,6 @@ void helloFullScreenPartialMode() {
   display.setPartialWindow(0, 0, display.width(), display.height());
   display.setRotation(1);
   display.setFont(&FreeMonoBold9pt7b);
-  if (display.epd2.WIDTH < 104) display.setFont(0);
   display.setTextColor(GxEPD_BLACK);
 
   const char* updatemode;
@@ -157,14 +158,37 @@ void showPartialUpdate() {
   Serial.println("Displaying: Partial Update Demo!");
 }
 
+// 描画関数を呼び出すヘルパー関数
+void updateDisplayContent() {
+  switch (displayMode) {
+    case 0:
+      helloWorld();
+      break;
+    case 1:
+      helloFullScreenPartialMode();
+      break;
+    case 2:
+      if (display.epd2.hasFastPartialUpdate) {
+        showPartialUpdate();
+      } else {
+        Serial.println("Partial Update not available for this display, cannot switch to mode 2.");
+        // 部分更新が利用できない場合は、別のモードに設定し直す
+        displayMode = 0; // または1など
+        helloWorld(); // スキップした場合は最初の画面を表示
+      }
+      break;
+  }
+}
+
 // --- setup() 関数: プログラムの初期設定と一度だけ実行される処理 ---
 void setup() {
   Serial.begin(115200);
-  Serial.println("ESP32-C3 4.2inch E-Paper Demo with Button Control");
+  Serial.println("ESP32-C3 E-Paper Demo with Dual Button Control");
   Serial.println("Starting E-Paper initialization...");
 
   // ボタンピンをプルアップ入力として設定
-  pinMode(BUTTON_PIN, INPUT_PULLUP); // 内部プルアップ抵抗を有効にする
+  pinMode(BUTTON_PIN_1, INPUT_PULLUP);
+  pinMode(BUTTON_PIN_2, INPUT_PULLUP);
 
   // E-Paperディスプレイの初期化
   display.init(115200, true, 50, false);
@@ -176,44 +200,41 @@ void setup() {
 
 // --- loop() 関数: setup() 実行後に繰り返し実行される処理 ---
 void loop() {
-  // ボタンの状態を読み取る
-  int buttonState = digitalRead(BUTTON_PIN);
+  // --- ボタン1の処理 ---
+  int button1State = digitalRead(BUTTON_PIN_1);
+  if (button1State == LOW && millis() - lastButton1PressTime > debounceDelay) {
+    lastButton1PressTime = millis();
 
-  // ボタンが押され (LOW)、かつデバウンス時間以上経過しているかチェック
-  if (buttonState == LOW && millis() - lastButtonPressTime > debounceDelay) {
-    lastButtonPressTime = millis(); // 最後にボタンが押された時刻を更新
-
-    // 表示モードを切り替える
     displayMode++;
     if (displayMode > 2) { // 0, 1, 2 の3つのモードを循環
       displayMode = 0;
     }
 
-    Serial.print("Button pressed! Changing display mode to: ");
+    Serial.print("Button 1 pressed! Changing display mode to: ");
     Serial.println(displayMode);
 
-    // 新しいモードに応じてE-Paperを更新
-    switch (displayMode) {
-      case 0:
-        helloWorld();
-        break;
-      case 1:
-        helloFullScreenPartialMode();
-        break;
-      case 2:
-        if (display.epd2.hasFastPartialUpdate) {
-          showPartialUpdate();
-        } else {
-          // 部分更新が利用できない場合は次のモードへスキップ
-          Serial.println("Partial Update not available, skipping to next mode.");
-          displayMode = 0; // または1など
-          helloWorld(); // スキップした場合は次の画面を表示
-        }
-        break;
+    updateDisplayContent(); // 表示を更新する関数を呼び出す
+  }
+
+  // --- ボタン2の処理 ---
+  int button2State = digitalRead(BUTTON_PIN_2);
+  if (button2State == LOW && millis() - lastButton2PressTime > debounceDelay) {
+    lastButton2PressTime = millis();
+
+    // 例: ボタン2が押されたら、常にPartialUpdateデモに切り替える
+    // もしくは、特定のモードに戻る、など自由に設定できます。
+    if (displayMode != 2 && display.epd2.hasFastPartialUpdate) {
+      displayMode = 2; // Partial Updateモードへ直接ジャンプ
+      Serial.println("Button 2 pressed! Jumping to Partial Update Demo.");
+      updateDisplayContent(); // 表示を更新する関数を呼び出す
+    } else {
+      // もしすでにPartial Updateモードなら、最初のモードに戻すなど
+      displayMode = 0; // 例として最初のモードに戻す
+      Serial.println("Button 2 pressed! Already in Partial Update or not available, returning to Hello World.");
+      updateDisplayContent();
     }
   }
 
-  // E-Paperは一度表示すると保持されるため、ループ内で頻繁な更新は不要です。
-  // ボタン入力を待機するために短いdelayを入れるか、loop()を高速に回しても良い。
-  // delay(10); // 短い遅延でボタンのチャタリングを防ぎつつ、ループを回す
+  // ボタンの入力処理は高速に行われるべきなので、delayは不要。
+  // ただし、無限ループでCPUを使い切らないよう、必要であれば短いdelay(1)などを追加しても良い。
 }
