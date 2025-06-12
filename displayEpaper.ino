@@ -15,7 +15,15 @@ GxEPD2_BW<GxEPD2_420_GDEY042T81, GxEPD2_420_GDEY042T81::HEIGHT> display(
 
 // デモ表示用の定数文字列
 const char HelloWorld[] = "Hello World!";
-const char HelloWeACtStudio[] = "WeAct Studio"; // 元のデモにあった文字列
+const char HelloWeACtStudio[] = "WeAct Studio";
+
+// --- ボタン制御用の変数 ---
+#define BUTTON_PIN 8 // ボタンを接続するGPIOピン (XIAO D8 / SCK)
+long lastButtonPressTime = 0; // 最後にボタンが押された時刻
+const long debounceDelay = 200; // デバウンス時間 (ミリ秒)
+
+// 描画状態を管理する変数
+int displayMode = 0; // 0: helloWorld(), 1: helloFullScreenPartialMode(), 2: showPartialUpdate()
 
 // --- 描画関数1: 基本的な「Hello World!」表示 ---
 void helloWorld() {
@@ -39,9 +47,10 @@ void helloWorld() {
 
     display.getTextBounds(HelloWeACtStudio, 0, 0, &tbx, &tby, &tbw, &tbh);
     uint16_t x_was = ((display.width() - tbw) / 2) - tbx;
-    display.setCursor(x_was, y_hw + tbh); // "WeAct Studio" のカーソル位置を設定
-    display.print(HelloWeACtStudio);      // "WeAct Studio" を描画
-  } while (display.nextPage()); // 画面更新が完了するまで繰り返す
+    display.setCursor(x_was, y_hw + tbh);
+    display.print(HelloWeACtStudio);
+  } while (display.nextPage());
+  Serial.println("Displaying: Hello World!");
 }
 
 // --- 描画関数2: フルスクリーン更新モードの表示 ---
@@ -52,11 +61,11 @@ void helloFullScreenPartialMode() {
   const char npm[] = "no partial mode";
 
   display.setPartialWindow(0, 0, display.width(), display.height());
-  display.setRotation(1); // 画面の向きを設定
-  display.setFont(&FreeMonoBold9pt7b); // フォントを設定
-  display.setTextColor(GxEPD_BLACK);    // テキスト色を黒に設定
+  display.setRotation(1);
+  display.setFont(&FreeMonoBold9pt7b);
+  if (display.epd2.WIDTH < 104) display.setFont(0);
+  display.setTextColor(GxEPD_BLACK);
 
-  // ディスプレイの更新モードに関するメッセージを選択
   const char* updatemode;
   if (display.epd2.hasFastPartialUpdate) {
     updatemode = fpm;
@@ -90,6 +99,7 @@ void helloFullScreenPartialMode() {
     display.setCursor(umx, umy);
     display.print(updatemode);
   } while (display.nextPage());
+  Serial.println("Displaying: Full Screen Partial Mode Info!");
 }
 
 // --- 描画関数3: 部分更新のデモ ---
@@ -144,56 +154,66 @@ void showPartialUpdate() {
     } while (display.nextPage());
     delay(500);
   }
+  Serial.println("Displaying: Partial Update Demo!");
 }
 
 // --- setup() 関数: プログラムの初期設定と一度だけ実行される処理 ---
 void setup() {
-  Serial.begin(115200); // シリアル通信を開始 (デバッグ出力用)
-  Serial.println("ESP32-C3 4.2inch E-Paper Demo (SSD1683) - Final Code for XIAO ESP32C3");
+  Serial.begin(115200);
+  Serial.println("ESP32-C3 4.2inch E-Paper Demo with Button Control");
   Serial.println("Starting E-Paper initialization...");
 
-  // 元のデモコードにあったGPIO8の初期化。これはE-Paper制御とは直接関係ないかもしれません。
-  // 必要に応じてこの行を削除または変更してください。
-  pinMode(8, OUTPUT);
-  digitalWrite(8, HIGH); // GPIO8をHIGHに設定（例: LEDを点灯）
+  // ボタンピンをプルアップ入力として設定
+  pinMode(BUTTON_PIN, INPUT_PULLUP); // 内部プルアップ抵抗を有効にする
 
   // E-Paperディスプレイの初期化
-  // 引数: シリアル速度、リセット後に初期化するか、リセットピンのホールド時間、手動リセットを有効にするか
   display.init(115200, true, 50, false);
   Serial.println("E-Paper initialization complete.");
 
-  // 各描画デモ関数を順番に呼び出す
-  Serial.println("Running helloWorld() demo...");
-  helloWorld();
-  delay(3000); // 3秒間表示
-
-  Serial.println("Running helloFullScreenPartialMode() demo...");
-  helloFullScreenPartialMode();
-  delay(3000); // 3秒間表示
-
-  // ディスプレイが高速部分更新に対応している場合のみ、部分更新デモを実行
-  if (display.epd2.hasFastPartialUpdate) {
-    Serial.println("Running showPartialUpdate() demo (Fast Partial Update available)...");
-    showPartialUpdate();
-    delay(3000); // 3秒間表示
-  } else {
-    Serial.println("Partial Update is not available or is slow. Skipping showPartialUpdate() demo.");
-  }
-  
-  // E-Paperディスプレイを低電力モード（休止状態）へ移行
-  // これにより、表示内容は保持されたまま消費電力が抑えられます。
-  display.hibernate();
-  Serial.println("Display is in hibernate mode. Program finished demonstration.");
+  // 初期表示モード
+  helloWorld(); // まずはHello Worldを表示
 }
 
 // --- loop() 関数: setup() 実行後に繰り返し実行される処理 ---
 void loop() {
-  // E-Paperは一度コンテンツを表示するとその状態を保持するため、
-  // 通常はloop()で頻繁に更新する必要はありません。
-  // ここでは、元のデモコードにあったGPIO8のトグル処理のみ残します。
-  // E-Paperの表示とは直接関係ありません。
-  digitalWrite(8, HIGH); // GPIO8をHIGH (ON)
-  delay(1000);           // 1秒待機
-  digitalWrite(8, LOW);  // GPIO8をLOW (OFF)
-  delay(1000);           // 1秒待機
+  // ボタンの状態を読み取る
+  int buttonState = digitalRead(BUTTON_PIN);
+
+  // ボタンが押され (LOW)、かつデバウンス時間以上経過しているかチェック
+  if (buttonState == LOW && millis() - lastButtonPressTime > debounceDelay) {
+    lastButtonPressTime = millis(); // 最後にボタンが押された時刻を更新
+
+    // 表示モードを切り替える
+    displayMode++;
+    if (displayMode > 2) { // 0, 1, 2 の3つのモードを循環
+      displayMode = 0;
+    }
+
+    Serial.print("Button pressed! Changing display mode to: ");
+    Serial.println(displayMode);
+
+    // 新しいモードに応じてE-Paperを更新
+    switch (displayMode) {
+      case 0:
+        helloWorld();
+        break;
+      case 1:
+        helloFullScreenPartialMode();
+        break;
+      case 2:
+        if (display.epd2.hasFastPartialUpdate) {
+          showPartialUpdate();
+        } else {
+          // 部分更新が利用できない場合は次のモードへスキップ
+          Serial.println("Partial Update not available, skipping to next mode.");
+          displayMode = 0; // または1など
+          helloWorld(); // スキップした場合は次の画面を表示
+        }
+        break;
+    }
+  }
+
+  // E-Paperは一度表示すると保持されるため、ループ内で頻繁な更新は不要です。
+  // ボタン入力を待機するために短いdelayを入れるか、loop()を高速に回しても良い。
+  // delay(10); // 短い遅延でボタンのチャタリングを防ぎつつ、ループを回す
 }
