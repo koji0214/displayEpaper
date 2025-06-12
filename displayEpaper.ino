@@ -23,7 +23,9 @@ const char HelloWeACtStudio[] = "WeAct Studio";
 
 long lastButton1PressTime = 0; // 1つ目のボタン用デバウンス変数
 long lastButton2PressTime = 0; // 2つ目のボタン用デバウンス変数
+long lastSimultaneousPressTime = 0; // 同時押し検出用のタイムスタンプ
 const long debounceDelay = 200; // デバウンス時間 (ミリ秒)
+const long simultaneousThreshold = 100; // 同時押しと見なす時間差の閾値 (ミリ秒)
 
 int displayMode = 0; // 表示モードを管理する変数 (0: helloWorld, 1: helloFullScreenPartialMode, 2: showPartialUpdate)
 
@@ -177,13 +179,26 @@ void updateDisplayContent() {
         helloWorld(); // スキップした場合は最初の画面を表示
       }
       break;
+    case 99: // 同時押し用の特別なモード
+      display.setRotation(1);
+      display.setFont(&FreeSansBold12pt7b);
+      display.setTextColor(GxEPD_BLACK);
+      display.setFullWindow();
+      display.firstPage();
+      do {
+        display.fillScreen(GxEPD_WHITE);
+        display.setCursor(10, display.height() / 2);
+        display.print("Both Buttons Pressed!");
+      } while (display.nextPage());
+      Serial.println("Displaying: Simultaneous Press Action!");
+      break;
   }
 }
 
 // --- setup() 関数: プログラムの初期設定と一度だけ実行される処理 ---
 void setup() {
   Serial.begin(115200);
-  Serial.println("ESP32-C3 E-Paper Demo with Dual Button Control");
+  Serial.println("ESP32-C3 E-Paper Demo with Dual Button Control and Simultaneous Press");
   Serial.println("Starting E-Paper initialization...");
 
   // ボタンピンをプルアップ入力として設定
@@ -200,41 +215,69 @@ void setup() {
 
 // --- loop() 関数: setup() 実行後に繰り返し実行される処理 ---
 void loop() {
-  // --- ボタン1の処理 ---
   int button1State = digitalRead(BUTTON_PIN_1);
-  if (button1State == LOW && millis() - lastButton1PressTime > debounceDelay) {
-    lastButton1PressTime = millis();
-
-    displayMode++;
-    if (displayMode > 2) { // 0, 1, 2 の3つのモードを循環
-      displayMode = 0;
-    }
-
-    Serial.print("Button 1 pressed! Changing display mode to: ");
-    Serial.println(displayMode);
-
-    updateDisplayContent(); // 表示を更新する関数を呼び出す
-  }
-
-  // --- ボタン2の処理 ---
   int button2State = digitalRead(BUTTON_PIN_2);
-  if (button2State == LOW && millis() - lastButton2PressTime > debounceDelay) {
-    lastButton2PressTime = millis();
 
-    // 例: ボタン2が押されたら、常にPartialUpdateデモに切り替える
-    // もしくは、特定のモードに戻る、など自由に設定できます。
-    if (displayMode != 2 && display.epd2.hasFastPartialUpdate) {
-      displayMode = 2; // Partial Updateモードへ直接ジャンプ
-      Serial.println("Button 2 pressed! Jumping to Partial Update Demo.");
-      updateDisplayContent(); // 表示を更新する関数を呼び出す
-    } else {
-      // もしすでにPartial Updateモードなら、最初のモードに戻すなど
-      displayMode = 0; // 例として最初のモードに戻す
-      Serial.println("Button 2 pressed! Already in Partial Update or not available, returning to Hello World.");
+  // 同時押し検出ロジック
+  if (button1State == LOW && button2State == LOW && millis() - lastSimultaneousPressTime > debounceDelay) {
+    // ボタン1とボタン2が両方押されており、かつデバウンス時間以上経過
+    // さらに、同時押しの閾値内で両方が押されているか（オプション：より厳密な検出）
+    // ここではシンプルに、両方がLOWになった時点で判定
+    
+    lastSimultaneousPressTime = millis(); // 同時押しが検出された時刻を更新
+
+    // ここで同時押し時の挙動を定義
+    if (displayMode != 99) { // 既に同時押しモードでなければ
+      displayMode = 99; // 特殊なモードに設定
+      Serial.println("Simultaneous press detected!");
       updateDisplayContent();
     }
-  }
+  } 
+  // 単独押し検出ロジック
+  else if (button1State == LOW && millis() - lastButton1PressTime > debounceDelay) {
+    lastButton1PressTime = millis();
+    
+    // 同時押し判定の後に単独押し判定を行うことで、同時押しを優先する
+    // ただし、もし同時押しモード中にボタン1が単独で離された場合など、
+    // 挙動をどうするかは要件次第
 
-  // ボタンの入力処理は高速に行われるべきなので、delayは不要。
-  // ただし、無限ループでCPUを使い切らないよう、必要であれば短いdelay(1)などを追加しても良い。
+    // 同時押しモードから抜け出すための処理をここに入れることもできる
+    if (displayMode == 99) { // 同時押しモードから抜ける場合
+      displayMode = 0; // あるいは前のモードに戻す
+      Serial.println("Exiting simultaneous mode via Button 1.");
+      updateDisplayContent();
+    } else {
+      displayMode++;
+      if (displayMode > 2) {
+        displayMode = 0;
+      }
+      Serial.print("Button 1 pressed! Changing display mode to: ");
+      Serial.println(displayMode);
+
+      updateDisplayContent(); // 表示を更新する関数を呼び出す
+    }
+  } 
+  else if (button2State == LOW && millis() - lastButton2PressTime > debounceDelay) {
+    lastButton2PressTime = millis();
+
+    // 同時押し判定の後に単独押し判定を行う
+    if (displayMode == 99) { // 同時押しモードから抜ける場合
+      displayMode = 0; // あるいは前のモードに戻す
+      Serial.println("Exiting simultaneous mode via Button 2.");
+      updateDisplayContent();
+    } else {
+      // 例: ボタン2が押されたら、常にPartialUpdateデモに切り替える
+      // もしくは、特定のモードに戻る、など自由に設定できます。
+      if (displayMode != 2 && display.epd2.hasFastPartialUpdate) {
+        displayMode = 2; // Partial Updateモードへ直接ジャンプ
+        Serial.println("Button 2 pressed! Jumping to Partial Update Demo.");
+      updateDisplayContent(); // 表示を更新する関数を呼び出す
+      } else {
+      // もしすでにPartial Updateモードなら、最初のモードに戻すなど
+      displayMode = 0; // 例として最初のモードに戻す
+        Serial.println("Button 2 pressed! Already in Partial Update or not available, returning to Hello World.");
+        updateDisplayContent();
+      }
+    }
+  }
 }
